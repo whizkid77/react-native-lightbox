@@ -79,6 +79,9 @@ var Lightbox = React.createClass({
       backgroundColor: this.props.backgroundColor,
       children: this.getContent(),
       onClose: this.onClose,
+
+      focusedChildIndex: this.props.focusedChildIndex,
+      onFocusedChildIndex: this.props.onFocusedChildIndex,
     };
   },
 
