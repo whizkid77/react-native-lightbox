@@ -75,10 +75,10 @@ var LightboxOverlay = React.createClass({
     componentWillMount: function() {
         this._panResponder = PanResponder.create({
             // Ask to be the responder:
-            onStartShouldSetPanResponder: (evt, gestureState) => !this.state.isAnimating,
-            onStartShouldSetPanResponderCapture: (evt, gestureState) => !this.state.isAnimating,
-            onMoveShouldSetPanResponder: (evt, gestureState) => !this.state.isAnimating,
-            onMoveShouldSetPanResponderCapture: (evt, gestureState) => !this.state.isAnimating,
+            onStartShouldSetPanResponder: (evt, gestureState) => !this.state.isAnimating && this.props.swipeToDismiss,
+            onStartShouldSetPanResponderCapture: (evt, gestureState) => !this.state.isAnimating && this.props.swipeToDismiss,
+            onMoveShouldSetPanResponder: (evt, gestureState) => !this.state.isAnimating && this.props.swipeToDismiss,
+            onMoveShouldSetPanResponderCapture: (evt, gestureState) => !this.state.isAnimating && this.props.swipeToDismiss,
             onPanResponderGrant: (evt, gestureState) => {
                 this.state.pan.y.setValue(0);
                 this.setState({ isPanning: true });
@@ -254,6 +254,8 @@ var LightboxOverlay = React.createClass({
         var handlers;
         if(swipeToDismiss) {
             handlers = this._panResponder.panHandlers;
+        } else {
+            handlers = null;
         }
 
         var verticalDragStyle = null;
@@ -283,6 +285,7 @@ var LightboxOverlay = React.createClass({
                                                                                          </TouchableOpacity>
                                                                                      )
         )}</Animated.View>);
+
         var content = (
             <Animated.View style={[openStyle, verticalDragStyle]} {...handlers}>
             <Animated.View
