@@ -25,6 +25,9 @@ var WINDOW_WIDTH = Dimensions.get('window').width;
 var DRAG_DISMISS_THRESHOLD = 150;
 var STATUS_BAR_OFFSET = (Platform.OS === 'android' ? -25 : 0);
 
+const DOUBLE_TAP_INTERVAL = 500;
+const DOUBLE_TAP_LOCATION_THRESHOLD = 10;
+
 var LightboxOverlay = React.createClass({
     propTypes: {
         origin: PropTypes.shape({
@@ -138,7 +141,7 @@ var LightboxOverlay = React.createClass({
                         var targetOffset = null;
                         if ((gestureState.dx < -1 * NEXT_CHILD_OFFSET_THRESHOLD
                           || gestureState.vx < -1 * NEXT_CHILD_VELOCITY_THRESHOLD)
-                                && this.state.focusedChildIndex < this.props.children.length-1
+                                && this.state.focusedChildIndex < this.props.images.length-1
                         ) {
                             //Move to the next child
                             targetOffset = -1 * WINDOW_WIDTH;
@@ -167,6 +170,8 @@ var LightboxOverlay = React.createClass({
                                 this.props.onFocusedChildIndex(this.state.focusedChildIndex);
                             }
                         });
+                    } else {
+                        this._handleDoubleTap(evt,true);
                     }
                 }
             },
@@ -184,8 +189,8 @@ var LightboxOverlay = React.createClass({
 
         this.state.pan.x.setValue(0);
         this.state.carouselOffset = -1 * (this.state.focusedChildIndex || 0) * WINDOW_WIDTH;
-        this.state.pan.x.setOffset(this.state.carouselOffset);
-
+        this.state.pan.x.setOffset(this.state.carouselOffset);            
+        
         this.state.pan.y.setValue(0);
         this.setState({
             isAnimating: true,
@@ -230,6 +235,32 @@ var LightboxOverlay = React.createClass({
         
     },
 
+    _handleDoubleTap: function (evt,zoomIn) {
+        let now = new Date().getTime();
+        if (!this._lastPress) {
+            this._lastPress = {
+                timestamp:0,
+                locationX:-999,
+                locationY:-999
+            }
+        }
+        let timeDelta = now - this._lastPress.timestamp;
+        if (timeDelta < DOUBLE_TAP_INTERVAL
+         && Math.abs(this._lastPress.locationX - evt.nativeEvent.locationX) < DOUBLE_TAP_LOCATION_THRESHOLD
+         && Math.abs(this._lastPress.locationY - evt.nativeEvent.locationY) < DOUBLE_TAP_LOCATION_THRESHOLD
+         && evt.nativeEvent.changedTouches.length == 1
+        ) {
+            var currentScrollView = this.refs['overlay_image_slide_'+this.state.focusedChildIndex];
+            var windowSize = zoomIn ? 10 : 10000;
+            currentScrollView.scrollResponderZoomTo({x: evt.nativeEvent.locationX-windowSize/2, y: evt.nativeEvent.locationY-windowSize/2, width: windowSize, height: windowSize, animated:true});
+        }
+        this._lastPress = {
+            timestamp: now,
+            locationX:evt.nativeEvent.locationX,
+            locationY:evt.nativeEvent.locationY,
+        };
+    },
+    
     render: function() {
         var {
             isOpen,
@@ -265,17 +296,23 @@ var LightboxOverlay = React.createClass({
             };
             lightboxOpacityStyle.opacity = this.state.pan.y.interpolate({inputRange: [-WINDOW_HEIGHT, 0, WINDOW_HEIGHT], outputRange: [0, 1, 0]});
         }
-        var horizontalDragStyle = {
-            left: this.state.pan.x,
-        };
-        
-        var openStyle = [styles.open, {
+        var horizontalDragStyle = {};
+        if (!this.state.isAnimating) {
+            horizontalDragStyle = {
+                left: this.state.pan.x,
+            };
+        }
+        var outerOpenStyle = [styles.open, {
             left:   openVal.interpolate({inputRange: [0, 1], outputRange: [origin.x, target.x]}),
             top:    openVal.interpolate({inputRange: [0, 1], outputRange: [origin.y + STATUS_BAR_OFFSET, target.y + STATUS_BAR_OFFSET]}),
             width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, WINDOW_WIDTH]}),
             height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, WINDOW_HEIGHT]}),
         }];
-
+        var openImageStyle = {
+            width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, WINDOW_WIDTH]}),
+            height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, WINDOW_HEIGHT]}),
+        };
+        
         var background = (<Animated.View style={[styles.background, { backgroundColor: backgroundColor }, lightboxOpacityStyle]}></Animated.View>);
         var header = (<Animated.View style={[styles.header, lightboxOpacityStyle]}>{(renderHeader ?
                                                                                      renderHeader(this.close) :
@@ -285,20 +322,56 @@ var LightboxOverlay = React.createClass({
                                                                                          </TouchableOpacity>
                                                                                      )
         )}</Animated.View>);
-
+        
+        var children = this.props.images.map((image,key) => {
+            /*
+               Only display all the other images in the carousel when we're not animating.
+               When we're animating, render only the single visible tile to make it easier
+               to do the animations.
+             */
+            if (this.state.isAnimating && key != this.state.focusedChildIndex) {
+                return;
+            }
+            var imageStyle = {
+                width: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, image.width]}),
+                height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, image.height]}),
+            };
+            return (
+                <Animated.View style={openImageStyle} key={key}>
+                  <ScrollView
+                    ref={"overlay_image_slide_"+key}
+                    minimumZoomScale={1}
+                    maximumZoomScale={this.props.zoomScaleFactor}
+                    bouncesZoom={true}
+                    centerContent={true}
+                    scrollEventThrottle={200}
+                    onScroll={this.props.onLightboxScroll}
+                    onTouchEnd={(evt) => {
+                      if (this.props.swipeToDismiss) {
+                        return;
+                      }
+                      this._handleDoubleTap(evt,false);
+                    }}
+                  >
+                    <Animated.Image source={{uri:image.url}} style={imageStyle}/>
+                  </ScrollView>
+                </Animated.View>
+            );
+        });
+        
         var content = (
-            <Animated.View style={[openStyle, verticalDragStyle]} {...handlers}>
-            <Animated.View
-            style={[openStyle,{
-                position:'absolute',
-                top:0,
-                flexDirection:'row',
-                alignItems:'center',
-                justifyContent:'flex-start',
-            },horizontalDragStyle]}
-            >
-            {this.props.children}
-            </Animated.View>
+            <Animated.View style={[outerOpenStyle, verticalDragStyle]} {...handlers}>
+              <Animated.View
+                style={[{
+                  position:'absolute',
+                  top:0,
+                  flexDirection:'row',
+                  alignItems:'center',
+                  justifyContent:'flex-start',
+                },horizontalDragStyle]}
+              >
+                {children}
+              </Animated.View>
             </Animated.View>
         );
         if(this.props.navigator) {

@@ -24,7 +24,6 @@ var Lightbox = React.createClass({
   propTypes: {
     activeProps:     PropTypes.object,
     renderHeader:    PropTypes.func,
-    renderContent:   PropTypes.func,
     underlayColor:   PropTypes.string,
     backgroundColor: PropTypes.string,
     onOpen:          PropTypes.func,
@@ -34,6 +33,13 @@ var Lightbox = React.createClass({
       friction:      PropTypes.number,
     }),
     swipeToDismiss:  PropTypes.bool,
+
+    images:              PropTypes.array,
+    focusedChildIndex:   PropTypes.number,
+    onFocusedChildIndex: PropTypes.func,
+    onLightboxScroll:    PropTypes.func,
+    zoomScaleFactor:     PropTypes.number,
+
   },
 
   getDefaultProps: function() {
@@ -57,18 +63,6 @@ var Lightbox = React.createClass({
     };
   },
 
-  getContent: function() {
-    if(this.props.renderContent) {
-      return this.props.renderContent();
-    } else if(this.props.activeProps) {
-      return cloneElement(
-        Children.only(this.props.children),
-        this.props.activeProps
-      );
-    }
-    return this.props.children;
-  },
-
   getOverlayProps: function() {
     return {
       isOpen: this.state.isOpen,
@@ -77,11 +71,13 @@ var Lightbox = React.createClass({
       swipeToDismiss: this.props.swipeToDismiss,
       springConfig: this.props.springConfig,
       backgroundColor: this.props.backgroundColor,
-      children: this.getContent(),
       onClose: this.onClose,
 
+      images: this.props.images,
       focusedChildIndex: this.props.focusedChildIndex,
       onFocusedChildIndex: this.props.onFocusedChildIndex,
+      onLightboxScroll: this.props.onLightboxScroll,
+      zoomScaleFactor: this.props.zoomScaleFactor,
     };
   },
 
