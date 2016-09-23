@@ -120,9 +120,11 @@ var LightboxOverlay = React.createClass({
             onPanResponderMove: (evt, gestureState) => {
                 if (!this.state.panDirection) {
                     if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
-                        this.setState({panDirection:'horizontal'});
+                        this.state.panDirection = 'horizontal';
+                        //this.setState({panDirection:'horizontal'});
                     } else {
-                        this.setState({panDirection:'vertical'});
+                        this.state.panDirection = 'vertical';
+                        //this.setState({panDirection:'vertical'});
                     }
                 }
                 if (this.state.panDirection == 'vertical') {
@@ -143,7 +145,14 @@ var LightboxOverlay = React.createClass({
             },
             onPanResponderTerminationRequest: (evt, gestureState) => true,
             onPanResponderRelease: (evt, gestureState) => {
-                if(this.state.panDirection == 'vertical' && Math.abs(gestureState.dy) > DRAG_DISMISS_THRESHOLD) {
+                var didDoubleTap = this._handleDoubleTap(evt,true);
+
+                if (didDoubleTap) {
+                    //double tap has priority, since we could be in the middle of sliding and miss the double tap.  The unresponsiveness of the UI would not be good for UX.
+                    //we already double tapped, skip everything else.
+                }
+                //sliding up or down to close the lightbox.
+                else if(this.state.panDirection == 'vertical' && Math.abs(gestureState.dy) > DRAG_DISMISS_THRESHOLD) {
                     this.setState({
                         isPanning: false,
                         panDirection: null,
@@ -154,56 +163,54 @@ var LightboxOverlay = React.createClass({
                         },
                     });
                     this.close();
-                } else {
-                    if (this.state.panDirection == 'vertical') {
-                        Animated.spring(
-                            this.state.pan.y,
-                            {toValue: 0, ...this.props.springConfig}
-                        ).start(() => { this.setState({ isPanning: false, panDirection:null }); });
+                }
+                //sliding up or down, but not enough to close the lightbox.
+                else if (this.state.panDirection == 'vertical') {
+                    Animated.spring(
+                        this.state.pan.y,
+                        {toValue: 0, ...this.props.springConfig}
+                    ).start(() => { this.setState({ isPanning: false, panDirection:null }); });
+                }
+                else if (this.state.panDirection == 'horizontal') {
+                    /*
+                       Two situations where we want to pan to the next child:
+                       1. If velocity is high enough
+                       2. If dx is large enough
+                     */
+                    var NEXT_CHILD_OFFSET_THRESHOLD = Math.max(this.state.windowWidth * 0.2,50);
+                    var NEXT_CHILD_VELOCITY_THRESHOLD = 1;
+                    var targetOffset = null;
+                    if ((gestureState.dx < -1 * NEXT_CHILD_OFFSET_THRESHOLD
+                      || gestureState.vx < -1 * NEXT_CHILD_VELOCITY_THRESHOLD)
+                            && this.state.focusedChildIndex < this.props.images.length-1
+                    ) {
+                        //Move to the next child
+                        targetOffset = -1 * this.state.windowWidth;
+                        this.state.focusedChildIndex += 1;
                     }
-                    else if (this.state.panDirection == 'horizontal') {
-                        /*
-                        Two situations where we want to pan to the next child:
-                        1. If velocity is high enough
-                        2. If dx is large enough
-                         */
-                        var NEXT_CHILD_OFFSET_THRESHOLD = Math.max(this.state.windowWidth * 0.2,50);
-                        var NEXT_CHILD_VELOCITY_THRESHOLD = 1;
-                        var targetOffset = null;
-                        if ((gestureState.dx < -1 * NEXT_CHILD_OFFSET_THRESHOLD
-                          || gestureState.vx < -1 * NEXT_CHILD_VELOCITY_THRESHOLD)
-                                && this.state.focusedChildIndex < this.props.images.length-1
-                        ) {
-                            //Move to the next child
-                            targetOffset = -1 * this.state.windowWidth;
-                            this.state.focusedChildIndex += 1;
-                        }
-                        else if ((gestureState.dx > NEXT_CHILD_OFFSET_THRESHOLD
-                               || gestureState.vx > NEXT_CHILD_VELOCITY_THRESHOLD)
-                                && this.state.focusedChildIndex > 0
-                        ) {
-                            //Move to the previous child
-                            targetOffset = this.state.windowWidth;
-                            this.state.focusedChildIndex -= 1;
-                        } else {
-                            //Focused child does not change
-                            targetOffset = 0;
-                        }
-                        Animated.spring(
-                            this.state.pan.x,
-                            {toValue: targetOffset, ...this.props.springConfig}
-                        ).start(() => {
-                            this.state.carouselOffset += targetOffset;
-                            this.state.pan.x.setOffset(this.state.carouselOffset);
-                            this.state.pan.x.setValue(0);
-                            this.setState({ isPanning: false, panDirection:null });
-                            if (this.props.onFocusedChildIndex) {
-                                this.props.onFocusedChildIndex(this.state.focusedChildIndex);
-                            }
-                        });
+                    else if ((gestureState.dx > NEXT_CHILD_OFFSET_THRESHOLD
+                           || gestureState.vx > NEXT_CHILD_VELOCITY_THRESHOLD)
+                            && this.state.focusedChildIndex > 0
+                    ) {
+                        //Move to the previous child
+                        targetOffset = this.state.windowWidth;
+                        this.state.focusedChildIndex -= 1;
                     } else {
-                        this._handleDoubleTap(evt,true);
+                        //Focused child does not change
+                        targetOffset = 0;
                     }
+                    Animated.spring(
+                        this.state.pan.x,
+                        {toValue: targetOffset, ...this.props.springConfig}
+                    ).start(() => {
+                        this.state.carouselOffset += targetOffset;
+                        this.state.pan.x.setOffset(this.state.carouselOffset);
+                        this.state.pan.x.setValue(0);
+                        this.setState({ isPanning: false, panDirection:null });
+                        if (this.props.onFocusedChildIndex) {
+                            this.props.onFocusedChildIndex(this.state.focusedChildIndex);
+                        }
+                    });
                 }
             },
         });
@@ -271,6 +278,7 @@ var LightboxOverlay = React.createClass({
         
     },
 
+    //Handle a double tap to zoom in or out.  If we did zoom, return true.  Otherwise return false.
     _handleDoubleTap: function (evt,zoomIn) {
         let now = new Date().getTime();
         if (!this._lastPress) {
@@ -281,6 +289,7 @@ var LightboxOverlay = React.createClass({
             }
         }
         let timeDelta = now - this._lastPress.timestamp;
+        let didDoubleTap = false;
         if (timeDelta < DOUBLE_TAP_INTERVAL
          && Math.abs(this._lastPress.locationX - evt.nativeEvent.locationX) < DOUBLE_TAP_LOCATION_THRESHOLD
          && Math.abs(this._lastPress.locationY - evt.nativeEvent.locationY) < DOUBLE_TAP_LOCATION_THRESHOLD
@@ -289,12 +298,14 @@ var LightboxOverlay = React.createClass({
             var currentScrollView = this.refs['overlay_image_slide_'+this.state.focusedChildIndex];
             var windowSize = zoomIn ? 10 : 10000;
             currentScrollView.scrollResponderZoomTo({x: evt.nativeEvent.locationX-windowSize/2, y: evt.nativeEvent.locationY-windowSize/2, width: windowSize, height: windowSize, animated:true});
+            didDoubleTap = true;
         }
         this._lastPress = {
             timestamp: now,
             locationX:evt.nativeEvent.locationX,
             locationY:evt.nativeEvent.locationY,
         };
+        return didDoubleTap;
     },
 
     onLightboxScroll: function (evt) {
