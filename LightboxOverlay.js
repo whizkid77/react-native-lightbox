@@ -20,8 +20,8 @@ var {
     View,
 } = require('react-native');
 
-var WINDOW_HEIGHT = Dimensions.get('window').height;
-var WINDOW_WIDTH = Dimensions.get('window').width;
+//var WINDOW_HEIGHT = Dimensions.get('window').height;
+//var WINDOW_WIDTH = Dimensions.get('window').width;
 var DRAG_DISMISS_THRESHOLD = 150;
 var STATUS_BAR_OFFSET = (Platform.OS === 'android' ? -25 : 0);
 
@@ -61,6 +61,8 @@ var LightboxOverlay = React.createClass({
                 y: 0,
                 opacity: 1,
             },
+            windowWidth: 0,
+            windowHeight: 0,
             pan: new Animated.ValueXY(),
             carouselOffset: 0,
             openVal: new Animated.Value(0),
@@ -75,6 +77,35 @@ var LightboxOverlay = React.createClass({
         };
     },
 
+    onOrientationChange: function(orientation) {
+        this.setState({
+            windowWidth: SCREEN_WIDTH(),
+            windowHeight: SCREEN_HEIGHT(),
+        },() => {
+            //Re-center all the image ScrollViews
+            this.props.images.forEach((image,index) => {
+                var scrollView = this.refs['overlay_image_slide_'+index];
+                if (scrollView) {
+                    setTimeout(()=>this._centerScrollViewAndResetZoom(scrollView,image),0);
+                }
+            });
+        });
+    },
+
+    _centerScrollViewAndResetZoom: function(scrollView,imageData) {
+        scrollView.scrollResponderZoomTo({
+            y:0,
+            x:0,
+            width: imageData.width,
+            height: imageData.height,
+            animated: true,
+        });
+        scrollView.scrollTo({
+            x:((SCREEN_WIDTH()-imageData.width) * -0.5) || 0,
+            y:((SCREEN_HEIGHT()-imageData.height) * -0.5) || 0,
+        });
+    },
+    
     componentWillMount: function() {
         this._panResponder = PanResponder.create({
             // Ask to be the responder:
@@ -119,7 +150,7 @@ var LightboxOverlay = React.createClass({
                         target: {
                             y: gestureState.dy,
                             x: gestureState.dx,
-                            opacity: 1 - Math.abs(gestureState.dy / WINDOW_HEIGHT)
+                            opacity: 1 - Math.abs(gestureState.dy / this.state.windowHeight)
                         },
                     });
                     this.close();
@@ -136,7 +167,7 @@ var LightboxOverlay = React.createClass({
                         1. If velocity is high enough
                         2. If dx is large enough
                          */
-                        var NEXT_CHILD_OFFSET_THRESHOLD = Math.max(WINDOW_WIDTH * 0.2,50);
+                        var NEXT_CHILD_OFFSET_THRESHOLD = Math.max(this.state.windowWidth * 0.2,50);
                         var NEXT_CHILD_VELOCITY_THRESHOLD = 1;
                         var targetOffset = null;
                         if ((gestureState.dx < -1 * NEXT_CHILD_OFFSET_THRESHOLD
@@ -144,7 +175,7 @@ var LightboxOverlay = React.createClass({
                                 && this.state.focusedChildIndex < this.props.images.length-1
                         ) {
                             //Move to the next child
-                            targetOffset = -1 * WINDOW_WIDTH;
+                            targetOffset = -1 * this.state.windowWidth;
                             this.state.focusedChildIndex += 1;
                         }
                         else if ((gestureState.dx > NEXT_CHILD_OFFSET_THRESHOLD
@@ -152,7 +183,7 @@ var LightboxOverlay = React.createClass({
                                 && this.state.focusedChildIndex > 0
                         ) {
                             //Move to the previous child
-                            targetOffset = WINDOW_WIDTH;
+                            targetOffset = this.state.windowWidth;
                             this.state.focusedChildIndex -= 1;
                         } else {
                             //Focused child does not change
@@ -179,6 +210,11 @@ var LightboxOverlay = React.createClass({
     },
 
     componentDidMount: function() {
+        Device.initWithoutBind(this);
+        this.setState({
+            windowWidth: SCREEN_WIDTH(),
+            windowHeight: SCREEN_HEIGHT(),
+        });
         if(this.props.isOpen) {
             this.open();
         }
@@ -188,7 +224,7 @@ var LightboxOverlay = React.createClass({
         StatusBar.setHidden(true, 'fade');
 
         this.state.pan.x.setValue(0);
-        this.state.carouselOffset = -1 * (this.state.focusedChildIndex || 0) * WINDOW_WIDTH;
+        this.state.carouselOffset = -1 * (this.state.focusedChildIndex || 0) * this.state.windowWidth;
         this.state.pan.x.setOffset(this.state.carouselOffset);            
         
         this.state.pan.y.setValue(0);
@@ -230,7 +266,7 @@ var LightboxOverlay = React.createClass({
         this.state.focusedChildIndex = props.focusedChildIndex || 0;
         
         this.state.pan.x.setValue(0);
-        this.state.carouselOffset = -1 * (this.state.focusedChildIndex || 0) * WINDOW_WIDTH;
+        this.state.carouselOffset = -1 * (this.state.focusedChildIndex || 0) * this.state.windowWidth;
         this.state.pan.x.setOffset(this.state.carouselOffset);
         
     },
@@ -260,6 +296,19 @@ var LightboxOverlay = React.createClass({
             locationY:evt.nativeEvent.locationY,
         };
     },
+
+    onLightboxScroll: function (evt) {
+        /*
+        if (evt.nativeEvent.zoomScale) {
+            if (evt.nativeEvent.zoomScale == 1 && this.state.lightboxIsZoomed) {
+                this.state.lightboxIsZoomed = false;
+            } else if (evt.nativeEvent.zoomScale > 1 && !this.state.lightboxIsZoomed) {
+                this.state.lightboxIsZoomed = true;
+            }
+        }
+        */
+        return this.props.onLightboxScroll(evt);
+    },
     
     render: function() {
         var {
@@ -276,8 +325,7 @@ var LightboxOverlay = React.createClass({
             openVal,
             target,
         } = this.state;
-
-
+        
         var lightboxOpacityStyle = {
             opacity: openVal.interpolate({inputRange: [0, 1], outputRange: [0, target.opacity]})
         };
@@ -294,7 +342,7 @@ var LightboxOverlay = React.createClass({
             verticalDragStyle = {
                 top: this.state.pan.y,
             };
-            lightboxOpacityStyle.opacity = this.state.pan.y.interpolate({inputRange: [-WINDOW_HEIGHT, 0, WINDOW_HEIGHT], outputRange: [0, 1, 0]});
+            lightboxOpacityStyle.opacity = this.state.pan.y.interpolate({inputRange: [-this.state.windowHeight, 0, this.state.windowHeight], outputRange: [0, 1, 0]});
         }
         var horizontalDragStyle = {};
         if (!this.state.isAnimating) {
@@ -305,16 +353,16 @@ var LightboxOverlay = React.createClass({
         var outerOpenStyle = [styles.open, {
             left:   openVal.interpolate({inputRange: [0, 1], outputRange: [origin.x, target.x]}),
             top:    openVal.interpolate({inputRange: [0, 1], outputRange: [origin.y + STATUS_BAR_OFFSET, target.y + STATUS_BAR_OFFSET]}),
-            width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, WINDOW_WIDTH]}),
-            height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, WINDOW_HEIGHT]}),
+            width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, this.state.windowWidth]}),
+            height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, this.state.windowHeight]}),
         }];
         var openImageStyle = {
-            width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, WINDOW_WIDTH]}),
-            height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, WINDOW_HEIGHT]}),
+            width:  openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, this.state.windowWidth]}),
+            height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, this.state.windowHeight]}),
         };
-        
-        var background = (<Animated.View style={[styles.background, { backgroundColor: backgroundColor }, lightboxOpacityStyle]}></Animated.View>);
-        var header = (<Animated.View style={[styles.header, lightboxOpacityStyle]}>{(renderHeader ?
+
+        var background = (<Animated.View style={[styles.background, { backgroundColor: backgroundColor, width: this.state.windowWidth, height: this.state.windowHeight }, lightboxOpacityStyle]}></Animated.View>);
+        var header = (<Animated.View style={[styles.header, {width: this.state.windowWidth}, lightboxOpacityStyle]}>{(renderHeader ?
                                                                                      renderHeader(this.close) :
                                                                                      (
                                                                                          <TouchableOpacity onPress={this.close}>
@@ -336,6 +384,9 @@ var LightboxOverlay = React.createClass({
                 width: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.width, image.width]}),
                 height: openVal.interpolate({inputRange: [0, 1], outputRange: [origin.height, image.height]}),
             };
+
+            //This is a single image's slide.  The Animated.View handles the initial opening/expanding of the image.
+            //The ScrollView is completely fullscreen after opening.
             return (
                 <Animated.View style={openImageStyle} key={key}>
                   <ScrollView
@@ -345,7 +396,7 @@ var LightboxOverlay = React.createClass({
                     bouncesZoom={true}
                     centerContent={true}
                     scrollEventThrottle={200}
-                    onScroll={this.props.onLightboxScroll}
+                    onScroll={this.onLightboxScroll}
                     onTouchEnd={(evt) => {
                       if (this.props.swipeToDismiss) {
                         return;
@@ -358,7 +409,9 @@ var LightboxOverlay = React.createClass({
                 </Animated.View>
             );
         });
-        
+
+        //Outer Animated.View is animated because of "opening/expanding" the image when you touch it.  It also handles vertical dragging.
+        //Inner Animated.View can slide horizontally based on drag.
         var content = (
             <Animated.View style={[outerOpenStyle, verticalDragStyle]} {...handlers}>
               <Animated.View
@@ -366,8 +419,6 @@ var LightboxOverlay = React.createClass({
                   position:'absolute',
                   top:0,
                   flexDirection:'row',
-                  alignItems:'center',
-                  justifyContent:'flex-start',
                 },horizontalDragStyle]}
               >
                 {children}
@@ -398,8 +449,8 @@ var styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         left: 0,
-        width: WINDOW_WIDTH,
-        height: WINDOW_HEIGHT,
+        //width: this.state.windowWidth,
+        //height: this.state.windowHeight,
     },
     open: {
         position: 'absolute',
@@ -412,7 +463,7 @@ var styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         left: 0,
-        width: WINDOW_WIDTH,
+        //width: this.state.windowWidth,
         backgroundColor: 'transparent',
     },
     closeButton: {
