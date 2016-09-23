@@ -120,11 +120,9 @@ var LightboxOverlay = React.createClass({
             onPanResponderMove: (evt, gestureState) => {
                 if (!this.state.panDirection) {
                     if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
-                        this.state.panDirection = 'horizontal';
-                        //this.setState({panDirection:'horizontal'});
+                        this.setState({panDirection:'horizontal'});
                     } else {
-                        this.state.panDirection = 'vertical';
-                        //this.setState({panDirection:'vertical'});
+                        this.setState({panDirection:'vertical'});
                     }
                 }
                 if (this.state.panDirection == 'vertical') {
